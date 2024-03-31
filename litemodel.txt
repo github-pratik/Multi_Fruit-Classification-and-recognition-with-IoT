@@ -1,0 +1,107 @@
+
+from flask import Flask, escape, request, render_template
+import os
+import numpy as np
+import tensorflow as tf
+from keras.models import load_model
+from keras.preprocessing import image
+from PIL import Image, ImageOps
+
+APP_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+# model = load model("models/fruits.h5")
+#model = load_model("models/T1_SIG.h5")
+interpreter = tf.lite.Interpreter(model_path="models/Lite_Model/model.tflite")
+interpreter.allocate_tensors()
+
+class_names = ['RipeApple', 'OverripeApple', 'RipeOrange', 'OverripeOrange', 'RipeBanana', 'OverripeBanana', 'UnripeBanana', 'UnripeORange', 'UnripeApple']
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return render_template("index.html")
+
+@app.route('/about')
+def about():
+    return render_template("about.html")
+
+
+@app.route('/prediction', methods=['GET', 'POST'])
+def prediction():
+    test_image = None 
+    if request.method == 'POST':
+        f = request.files['fruit']
+        filename = f.filename
+        target = os.path.join(APP_ROOT, 'image/')
+        des = os.path.join(target, filename)
+        f.save(des)
+
+        # Resize and preprocess the uploaded image
+        image = Image.open(des).convert("RGB")
+        image = ImageOps.fit(image, (224, 224), Image.Resampling.LANCZOS)
+        image_array = np.asarray(image)
+        normalized_image_array = (image_array.astype(np.float32) / 127.5) - 1
+        data = np.ndarray(shape=(1, 224, 224, 3), dtype=np.float32)
+        data[0] = normalized_image_array
+#----------------------------------------------------------------
+        # Predict the class of the image
+        #prediction = model.predict(data)
+        #predicted_class = class_name[np.argmax(prediction[0])]
+        #confidence = round(np.max(prediction[0]) * 100)
+
+        #return render_template("prediction.html", confidence="Chances -> " + str(confidence) + "%", prediction="Prediction -> " + str(predicted_class))
+    
+    #else:
+        #return render_template("prediction.html")
+#----------------------------------------------------------------
+        # Predict the class of the image
+        #predictions = model.predict(data)
+        # Define the threshold
+#----------------------------------------------------------------------
+        input_details = interpreter.get_input_details()
+        output_details = interpreter.get_output_details()
+        interpreter.set_tensor(input_details[0]['index'], data)
+        interpreter.invoke()
+        output_data = interpreter.get_tensor(output_details[0]['index'])
+#----------------------------------------------------------------        
+        #threshold = 0.15
+        #num_fruits_detected = len(predictions[0])
+
+
+ #       print("Confidence score threshold:", predictions[0])
+#        if num_fruits_detected == 1:
+#            top_n_indices = np.argsort(predictions[0])[-1:][::-1]
+#        else:
+#            top_n_indices = np.where(predictions[0] > threshold)[0]
+#           top_n_indices = top_n_indices[np.argsort(predictions[0][top_n_indices])[::-1]][:3]
+#
+ #       print("Top indices:", top_n_indices)
+#
+#
+# Create a list of tuples containing class names and confidence scores for the top predictions
+#        top_n_predictions = [(class_name[i], round(predictions[0][i] * 100, 2)) for i in top_n_indices]
+#
+#        print("Top predictions:", top_n_predictions)
+#
+#        return render_template("prediction.html", top_n_predictions=top_n_predictions)
+#    else:
+#        return render_template("prediction.html")
+        
+        # Process output
+        threshold = 0.2  # Set threshold to 0.2
+        top_indices = np.where(output_data[0] > threshold)[0]
+        top_indices = top_indices[np.argsort(output_data[0][top_indices])[::-1]][:3]
+        top_predictions = [(class_names[i], output_data[0][i]) for i in top_indices]
+
+        return render_template("prediction.html", top_predictions=top_predictions)
+    else:
+        return render_template("prediction.html")
+
+
+
+
+
+
+if __name__ == '__main__':
+    app.debug = True
+    app.run()
